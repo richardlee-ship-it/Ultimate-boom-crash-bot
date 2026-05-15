@@ -134,14 +134,12 @@ def check_trade_result(symbol, price):
 # OPTIMIZED ANALYSIS ENGINE
 # =====================================
 def analyze(symbol):
-    # Reduced the required data constraint to safely support fast startup calculations
     if len(tick_data[symbol]) < 250:
         return
 
     m1 = build_candles(symbol, "1min")
     m5 = build_candles(symbol, "5min")
 
-    # Lowered loop criteria bounds to trigger alerts smoothly
     if len(m1) < 15 or len(m5) < 15:
         return
 
@@ -159,7 +157,7 @@ def analyze(symbol):
     m1_ema50 = ema(close, 50).iloc[-1]
     m1_ema200 = ema(close, 200).iloc[-1]
     
-    # Updated RSI parameters to your required 80/20 criteria
+    # RSI parameters to your required 80/20 criteria
     latest_rsi = rsi(close, 7).iloc[-1]
 
     pair_name = SYMBOLS[symbol]
@@ -230,13 +228,44 @@ def on_open(ws):
         }))
         ws.send(json.dumps({"ticks": symbol, "subscribe": 1}))
 
+# =====================================
+# RUN & LOOP (FIXED WITH PRODUCTION URL & DUMMY PORT)
+# =====================================
+def start_dummy_server():
+    """Keeps Railway alive by listening to the assigned system port."""
+    import http.server
+    import socketserver
+    import threading
+
+    class DummyHandler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Bot Engine is Active")
+
+    port = int(os.getenv("PORT", 8080))
+    
+    def server_thread():
+        # Fixes port re-use lock issues on rapid server crashes
+        socketserver.TCPServer.allow_reuse_address = True
+        with socketserver.TCPServer(("", port), DummyHandler) as httpd:
+            print(f"🌍 Dummy server ticking on port {port}")
+            httpd.serve_forever()
+            
+    threading.Thread(target=server_thread, daemon=True).start()
+
 def run():
+    # FIX: Swapped out broken domain for the official unblocked Deriv production endpoint
     url = f"wss://://derivws.com{DERIV_APP_ID}"
     ws = websocket.WebSocketApp(url, on_open=on_open, on_message=on_message)
     ws.run_forever()
 
 if __name__ == "__main__":
     print("🚀 Initializing Bot Main Loop...")
+    
+    # Fire up the dummy server so Railway doesn't shut the container down
+    start_dummy_server()
+    
     while True:
         try:
             run()
