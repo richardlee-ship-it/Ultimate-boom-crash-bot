@@ -9,15 +9,15 @@ import pandas as pd
 # =====================================
 BOT_NAME = "🚀 Ultimate Boom & Crash Bot Spike Engine"
 
-# Railway picks these up from your variables tab
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-DERIV_APP_ID = "1089"
+# 🛑 DIRECT FIX: Hardcode your real values inside the quotes below!
+# Do not leave "YOUR_..." text here. Replace it with your exact keys.
+BOT_TOKEN = "8667543667:AAEydSxfo9HcOuNaLuUx0XK0iKNo5t-mON8"
+CHAT_ID = "-6856488919"  # <-- Replace with your real Telegram group/channel Chat ID (include the minus sign)
 
+DERIV_APP_ID = "1089"
 last_signal_time = {}
 COOLDOWN = 300  # 5 minutes spacing between alerts on the same pair
 
-# Dict mapping pairs to their proper display names
 SYMBOLS = {
     "BOOM1000": "Boom 1000 Index",
     "CRASH1000": "Crash 1000 Index",
@@ -27,24 +27,16 @@ SYMBOLS = {
 }
 
 # =====================================
-# TELEGRAM SYSTEM (HARD-CODED LINK SAFEGUARD)
+# TELEGRAM SYSTEM (HARDCODED URL - IMPOSSIBLE TO PARSE FAULT)
 # =====================================
 def send_telegram(message):
-    if not BOT_TOKEN or not CHAT_ID:
-        print("⚠️ Missing Token or Chat ID setup inside environment tabs.")
-        return
-        
-    # Clean any accidental spaces or hidden break characters from your Railway variable
-    clean_token = str(BOT_TOKEN).strip()
-    clean_chat_id = str(CHAT_ID).strip()
-    
-    # Absolute core URL structure to prevent any parsing errors
-    url = f"https://telegram.org{clean_token}/sendMessage"
+    # Absolute strict URL configuration bypassing any outside system variables
+    url = f"https://telegram.org{BOT_TOKEN}/sendMessage"
     
     try:
         response = requests.post(
             url, 
-            data={"chat_id": clean_chat_id, "text": message}, 
+            data={"chat_id": CHAT_ID, "text": message}, 
             timeout=10
         )
         if response.status_code != 200:
@@ -72,7 +64,6 @@ def rsi(series, period=7):
 # EMA CLOSE POSITION EVALUATION
 # =====================================
 def near_ema(price, ema_value, threshold=2.5):
-    # Triggers if the current price is within 2.5 points of the indicator line
     return abs(price - ema_value) <= threshold
 
 # =====================================
@@ -94,7 +85,6 @@ def get_sl_tp(entry, direction):
 # CLOUD BACKEND REST API CANDLE ENGINE
 # =====================================
 def fetch_deriv_candles(symbol, timeframe_minutes):
-    """Bypasses custom web sockets by using standard unblocked web pools."""
     granularity = timeframe_minutes * 60
     url = f"https://derivws.com{symbol}&granularity={granularity}&count=100"
     
@@ -176,7 +166,6 @@ def process_market_analysis(symbol):
 # RAILWAY RUNNING ENVIRONMENT LIFELINE
 # =====================================
 def start_dummy_server():
-    """Keeps Railway web engines alive by hosting a micro port endpoint."""
     import http.server
     import socketserver
     import threading
@@ -204,14 +193,12 @@ if __name__ == "__main__":
     print("🚀 Initializing Rest Loop Framework...")
     start_dummy_server()
     
-    # Broadcast boot setup verification alert to your Telegram channel right away
     send_telegram(f"{BOT_NAME}\n\n✅ Cloud REST Engine Live on Railway 24/7\n\nStrategy Active:\n• M5 Trend Filters (50/200 EMA)\n• M1 Touch Pullbacks\n• RSI (80/20)\n• 1:3 Risk Target")
     
     while True:
         print("📊 Scanning Boom & Crash market variants across parameters...")
         for ticker in SYMBOLS.keys():
             process_market_analysis(ticker)
-            time.sleep(2)  # Generates processing space between asset checks
+            time.sleep(2)
             
-        # Puts scanner to rest for 15 seconds before pulling next sequence of checks
         time.sleep(15)
