@@ -1,26 +1,27 @@
-import time
 import requests
 
-# MANUALLY TYPE THE TOKEN AND ID HERE
+# Test credentials
 TOKEN = "8667543667:AAFFdhIPIjJGAVcbQ3be8wYgQQNvy_5mB9s"
 CHAT_ID = "6856488919"
 
-SYMBOLS = ["Crash 1000 Index", "Boom 1000 Index", "Crash 900 Index", "Crash 500 Index", "Boom 500 Index"]
-
-def send_msg(text):
+def run_test():
+    print("--- STARTING ONE-TIME CONNECTION TEST ---")
+    url = f"https://api.telegram.org/bot{TOKEN}/getMe"
+    
     try:
-        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        params = {"chat_id": CHAT_ID, "text": text}
-        r = requests.get(url, params=params)
-        print(f"Status: {r.status_code}")
+        # Test 1: Check if the token is even valid
+        r1 = requests.get(url)
+        print(f"Test 1 (Token Check) Status: {r1.status_code}")
+        print(f"Response: {r1.text}")
+        
+        # Test 2: Try to send a message
+        msg_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        payload = {"chat_id": CHAT_ID, "text": "🚨 TEST CODE WORKING!"}
+        r2 = requests.post(msg_url, json=payload)
+        print(f"Test 2 (Message Send) Status: {r2.status_code}")
+        
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Connection Error: {e}")
 
 if __name__ == "__main__":
-    print("--- SCANNER STARTING ---")
-    send_msg("✅ MANUAL TYPE SUCCESS!")
-    
-    while True:
-        for s in SYMBOLS:
-            print(f"Scanning {s}")
-        time.sleep(60)
+    run_test()
