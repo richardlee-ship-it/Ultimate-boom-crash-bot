@@ -8,7 +8,7 @@ import pandas_ta as ta
 # HARD-CODED CONFIGURATION (PRE-FILLED)
 # ==========================================
 BOT_TOKEN = "8667543667:AAEydSxfo9HcOuNaLuUx0XKOiKNo5t-mON8"
-CHAT_ID = "1449081541"
+CHAT_ID = "6856488919"
 API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
 def send_telegram_message(message):
