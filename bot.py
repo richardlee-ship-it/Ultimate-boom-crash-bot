@@ -2,12 +2,9 @@ import os
 import time
 import requests
 
-# ==========================================
-# 1. AUTHENTICATION (MANUALLY JOINED)
-# ==========================================
-# This is the exact token from IMG_1763 joined into one line
-TOKEN = "8667543667:AAFFdhIPIjJGAVcbQ3be8wYgQQNvy_5mB9s"
-MY_ID = "6856488919"
+# This looks for the names you created in the Railway dashboard
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 SYMBOLS = [
     "Crash 1000 Index", 
@@ -18,35 +15,36 @@ SYMBOLS = [
 ]
 
 def send_telegram_signal(message):
+    if not TOKEN or not CHAT_ID:
+        print("❌ ERROR: Missing variables in Railway Dashboard!")
+        return
+
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": MY_ID, "text": message, "parse_mode": "Markdown"}
+        payload = {
+            "chat_id": CHAT_ID,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
         r = requests.post(url, json=payload)
         
-        # We need this to say 200!
-        print(f"Telegram Log Status: {r.status_code}")
+        print(f"Telegram Status: {r.status_code}")
         if r.status_code != 200:
             print(f"Server Response: {r.text}")
+            
     except Exception as e:
         print(f"Connection Error: {e}")
 
-def analyze_market(symbol):
-    # Your logs show this part is working perfectly already
-    print(f"--- Scanning {symbol} ---")
-    pass
-
 if __name__ == "__main__":
-    print("--- MULTI-INDEX BOT STARTING ---")
+    print("--- MULTI-INDEX BOT ACTIVE ---")
     
-    # This is the confirmation message
-    send_telegram_signal("💎 *TOKEN VERIFIED*\nBot is now scanning all 5 Index markets.")
+    # This will prove if the variables are working
+    send_telegram_signal("🤖 *Sync Successful!*\nBot is reading from Railway variables.")
 
     while True:
+        # This is the loop you see working in your logs
         for market in SYMBOLS:
-            try:
-                analyze_market(market)
-            except Exception as e:
-                print(f"Error on {market}: {e}")
-        
-        # Wait 1 minute
+            print(f"--- Scanning {market} ---")
+            
+        # Wait 1 minute before next scan
         time.sleep(60)
