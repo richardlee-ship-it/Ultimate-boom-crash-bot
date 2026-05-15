@@ -5,12 +5,20 @@ import requests
 import websocket
 import pandas as pd
 
+# =====================================
+# BOT CONFIG
+# =====================================
+
 BOT_NAME = "🚀 Ultimate Boom & Crash Bot Spike Engine"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 
 DERIV_APP_ID = "1089"
+
+# =====================================
+# SYMBOLS
+# =====================================
 
 SYMBOLS = {
     "BOOM1000": "Boom 1000 Index",
@@ -19,6 +27,10 @@ SYMBOLS = {
     "CRASH500": "Crash 500 Index",
     "CRASH900": "Crash 900 Index"
 }
+
+# =====================================
+# STORAGE
+# =====================================
 
 tick_data = {s: [] for s in SYMBOLS}
 
@@ -94,30 +106,6 @@ def build_candles(prices, tf="1min"):
     return ohlc.dropna()
 
 # =====================================
-# REJECTION
-# =====================================
-
-def bullish_rejection(df):
-
-    c = df.iloc[-1]
-
-    body = abs(c["close"] - c["open"])
-
-    wick = min(c["open"], c["close"]) - c["low"]
-
-    return wick > body
-
-def bearish_rejection(df):
-
-    c = df.iloc[-1]
-
-    body = abs(c["close"] - c["open"])
-
-    wick = c["high"] - max(c["open"], c["close"])
-
-    return wick > body
-
-# =====================================
 # EMA TOUCH
 # =====================================
 
@@ -126,7 +114,7 @@ def near_ema(price, ema_value, threshold=15):
     return abs(price - ema_value) <= threshold
 
 # =====================================
-# SL TP
+# SL / TP
 # =====================================
 
 def get_sl_tp(entry, direction):
@@ -165,12 +153,20 @@ def check_trade_result(symbol, price):
 
     pair = trade["pair"]
 
+    # BUY
+
     if direction == "BUY":
 
         if price >= tp:
 
             send_telegram(
-f"🎯 TP HIT\n\n{pair}\n\nBUY closed in profit ✅"
+f"""
+🎯 TP HIT
+
+{pair}
+
+BUY closed in profit ✅
+"""
             )
 
             del active_trade[symbol]
@@ -178,17 +174,31 @@ f"🎯 TP HIT\n\n{pair}\n\nBUY closed in profit ✅"
         elif price <= sl:
 
             send_telegram(
-f"❌ SL HIT\n\n{pair}\n\nBUY stopped out"
+f"""
+❌ SL HIT
+
+{pair}
+
+BUY stopped out
+"""
             )
 
             del active_trade[symbol]
+
+    # SELL
 
     else:
 
         if price <= tp:
 
             send_telegram(
-f"🎯 TP HIT\n\n{pair}\n\nSELL closed in profit ✅"
+f"""
+🎯 TP HIT
+
+{pair}
+
+SELL closed in profit ✅
+"""
             )
 
             del active_trade[symbol]
@@ -196,13 +206,19 @@ f"🎯 TP HIT\n\n{pair}\n\nSELL closed in profit ✅"
         elif price >= sl:
 
             send_telegram(
-f"❌ SL HIT\n\n{pair}\n\nSELL stopped out"
+f"""
+❌ SL HIT
+
+{pair}
+
+SELL stopped out
+"""
             )
 
             del active_trade[symbol]
 
 # =====================================
-# ANALYSIS
+# ANALYSIS ENGINE
 # =====================================
 
 def analyze(symbol):
@@ -212,12 +228,20 @@ def analyze(symbol):
     if len(prices) < 500:
         return
 
+    # =================================
+    # BUILD CANDLES
+    # =================================
+
     m1 = build_candles(prices, "1min")
 
     m5 = build_candles(prices, "5min")
 
     if len(m1) < 50 or len(m5) < 50:
         return
+
+    # =================================
+    # M5 TREND
+    # =================================
 
     m5_close = m5["close"]
 
@@ -232,6 +256,10 @@ def analyze(symbol):
     bearish_trend = (
         m5_ema50.iloc[-1] < m5_ema200.iloc[-1]
     )
+
+    # =================================
+    # M1 ENTRY
+    # =================================
 
     close = m1["close"]
 
@@ -249,29 +277,50 @@ def analyze(symbol):
 
     last = last_signal_time.get(symbol, 0)
 
+    # =================================
+    # COOLDOWN
+    # =================================
+
     if now - last < COOLDOWN:
         return
+
+    # =================================
+    # ONE ACTIVE TRADE
+    # =================================
 
     if symbol in active_trade:
         return
 
-    # BUY
+    # =================================
+    # BUY LOGIC
+    # =================================
 
     if (
 
         bullish_trend and
+
         latest_rsi <= 25 and
+
         (
-            near_ema(latest_price, m1_ema50.iloc[-1])
+            near_ema(
+                latest_price,
+                m1_ema50.iloc[-1]
+            )
+
             or
-            near_ema(latest_price, m1_ema200.iloc[-1])
+
+            near_ema(
+                latest_price,
+                m1_ema200.iloc[-1]
+            )
         )
-        and
-        bullish_rejection(m1)
 
     ):
 
-        sl, tp = get_sl_tp(latest_price, "BUY")
+        sl, tp = get_sl_tp(
+            latest_price,
+            "BUY"
+        )
 
         send_telegram(
 f"""
@@ -281,7 +330,11 @@ f"""
 
 PAIR: {pair_name}
 
+M5 Trend: Bullish ✅
+
 RSI(7): {latest_rsi:.2f}
+
+EMA Pullback Confirmed
 
 ENTRY: {latest_price:.2f}
 SL: {sl:.2f}
@@ -299,23 +352,36 @@ TP: {tp:.2f}
 
         last_signal_time[symbol] = now
 
-    # SELL
+    # =================================
+    # SELL LOGIC
+    # =================================
 
     if (
 
         bearish_trend and
+
         latest_rsi >= 75 and
+
         (
-            near_ema(latest_price, m1_ema50.iloc[-1])
+            near_ema(
+                latest_price,
+                m1_ema50.iloc[-1]
+            )
+
             or
-            near_ema(latest_price, m1_ema200.iloc[-1])
+
+            near_ema(
+                latest_price,
+                m1_ema200.iloc[-1]
+            )
         )
-        and
-        bearish_rejection(m1)
 
     ):
 
-        sl, tp = get_sl_tp(latest_price, "SELL")
+        sl, tp = get_sl_tp(
+            latest_price,
+            "SELL"
+        )
 
         send_telegram(
 f"""
@@ -325,7 +391,11 @@ f"""
 
 PAIR: {pair_name}
 
+M5 Trend: Bearish ✅
+
 RSI(7): {latest_rsi:.2f}
+
+EMA Pullback Confirmed
 
 ENTRY: {latest_price:.2f}
 SL: {sl:.2f}
@@ -351,21 +421,18 @@ def on_message(ws, message):
 
     data = json.loads(message)
 
-    print(data)
-
     if "tick" in data:
 
         symbol = data["tick"]["symbol"]
 
         price = data["tick"]["quote"]
 
-        # DEBUG PRINT
-        print(symbol, price)
-
         if symbol not in tick_data:
             return
 
         tick_data[symbol].append(price)
+
+        # LIMIT MEMORY
 
         if len(tick_data[symbol]) > 3000:
 
@@ -378,7 +445,7 @@ def on_message(ws, message):
         analyze(symbol)
 
 # =====================================
-# OPEN
+# OPEN CONNECTION
 # =====================================
 
 def on_open(ws):
@@ -387,7 +454,7 @@ def on_open(ws):
 f"""
 {BOT_NAME}
 
-✅ Debug Mode Active
+✅ Live Trading Engine Active
 """
     )
 
@@ -421,7 +488,7 @@ def run():
 # =====================================
 
 send_telegram(
-f"{BOT_NAME}\n\n🚀 Starting Debug Mode..."
+f"{BOT_NAME}\n\n🚀 Starting..."
 )
 
 while True:
