@@ -1,189 +1,84 @@
-import os
-import json
+import pandas as pd
+import pandas_ta as ta
 import time
 import requests
-import websocket
-import pandas as pd
-from datetime import datetime
+import os
 
-# =====================================
-# BOT CONFIG
-# =====================================
-BOT_NAME = "🚀 Ultimate Boom & Crash Bot Spike Engine"
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
-DERIV_APP_ID = "1089"
+# --- CONFIGURATION ---
+TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+CHAT_ID = "YOUR_CHAT_ID"
+SYMBOLS = ["Crash 1000 Index", "Boom 1000 Index", "Crash 500 Index", "Boom 500 Index"]
 
-# =====================================
-# SYMBOLS
-# =====================================
-SYMBOLS = {
-    "BOOM1000": "Boom 1000 Index",
-    "CRASH1000": "Crash 1000 Index",
-    "BOOM500": "Boom 500 Index",
-    "CRASH500": "Crash 500 Index",
-    "CRASH900": "Crash 900 Index"
-}
+# Dictionary to store candle data
+# We need at least 200 candles to calculate EMA 200 accurately
+candles = {symbol: {'m1': [], 'm5': []} for symbol in SYMBOLS}
+last_pre_alert_time = {symbol: 0 for symbol in SYMBOLS} # To avoid spamming alerts
 
-# =====================================
-# STORAGE & SETTINGS
-# =====================================
-tick_data = {s: [] for s in SYMBOLS}
-last_signal_time = {}
-active_trade = {}
-COOLDOWN = 300 
-
-# =====================================
-# TELEGRAM
-# =====================================
 def send_telegram(message):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={CHAT_ID}&text={message}&parse_mode=Markdown"
     try:
-        requests.post(url, data={"chat_id": CHAT_ID, "text": message})
+        requests.get(url)
     except Exception as e:
-        print("Telegram Error:", e)
+        print(f"Error sending Telegram: {e}")
 
-# =====================================
-# INDICATORS
-# =====================================
-def ema(series, period):
-    return series.ewm(span=period, adjust=False).mean()
-
-def rsi(series, period=7):
-    delta = series.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.rolling(period).mean()
-    avg_loss = loss.rolling(period).mean()
-    avg_loss = avg_loss.replace(0, 0.00001)
-    rs = avg_gain / avg_loss
-    return 100 - (100 / (1 + rs))
-
-# =====================================
-# BUILD CANDLES
-# =====================================
-def build_candles(prices, tf="1min"):
-    df = pd.DataFrame(prices, columns=["price"])
-    # We use a frequency of 1s as a fallback for tick data spacing
-    df["time"] = pd.date_range(end=pd.Timestamp.now(), periods=len(df), freq="s")
-    df = df.set_index("time")
-    ohlc = df["price"].resample(tf).ohlc()
-    return ohlc.dropna()
-
-def near_ema(price, ema_value, threshold=20):
+def near_ema(price, ema_value, threshold=50):
     return abs(price - ema_value) <= threshold
 
-def get_sl_tp(entry, direction):
-    risk, reward = 20, 60
-    if direction == "BUY":
-        return entry - risk, entry + reward
-    return entry + risk, entry - reward
+def analyze(symbol, latest_price):
+    m1_list = candles[symbol]['m1']
+    m5_list = candles[symbol]['m5']
 
-# =====================================
-# ANALYSIS ENGINE
-# =====================================
-def analyze(symbol):
-    prices = tick_data[symbol]
+    # 1. Data Check (Need 200 for EMA 200)
+    if len(m1_list) < 200 or len(m5_list) < 200:
+        if int(time.time()) % 60 == 0:
+            print(f"DEBUG {symbol}: Syncing... M1: {len(m1_list)}/200, M5: {len(m5_list)}/200")
+        return
+
+    # 2. Indicators
+    m1_df = pd.Series(m1_list)
+    m5_df = pd.Series(m5_list)
     
-    # We now check for 1000 ticks to ensure enough M5 candles
-    if len(prices) < 1000:
-        return
+    latest_rsi = ta.rsi(m1_df, length=7).iloc[-1]
+    m5_ema50 = ta.ema(m5_df, length=50).iloc[-1]
+    m5_ema200 = ta.ema(m5_df, length=200).iloc[-1]
+    m1_ema50 = ta.ema(m1_df, length=50).iloc[-1]
 
-    m1 = build_candles(prices, "1min")
-    m5 = build_candles(prices, "5min")
-
-    if len(m1) < 20 or len(m5) < 20:
-        return
-
-    # TREND LOGIC (M5)
-    m5_close = m5["close"]
-    m5_ema50 = ema(m5_close, 50).iloc[-1]
-    m5_ema200 = ema(m5_close, 200).iloc[-1]
-
-    # ENTRY LOGIC (M1)
-    m1_close = m1["close"]
-    latest_price = m1_close.iloc[-1]
-    m1_ema50_val = ema(m1_close, 50).iloc[-1]
-    m1_ema200_val = ema(m1_close, 200).iloc[-1]
-    latest_rsi = rsi(m1_close, 7).iloc[-1]
-
-    now = time.time()
-    if (now - last_signal_time.get(symbol, 0) < COOLDOWN) or (symbol in active_trade):
-        return
-
-    # BUY CONDITION (Boom)
-    if (m5_ema50 > m5_ema200) and (latest_rsi <= 30) and \
-       (near_ema(latest_price, m1_ema50_val) or near_ema(latest_price, m1_ema200_val)):
-        
-        sl, tp = get_sl_tp(latest_price, "BUY")
-        send_telegram(f"🚀 {SYMBOLS[symbol]} BUY\nEntry: {latest_price:.2f}\nSL: {sl:.2f}\nTP: {tp:.2f}")
-        active_trade[symbol] = {"direction": "BUY", "tp": tp, "sl": sl, "pair": SYMBOLS[symbol]}
-        last_signal_time[symbol] = now
-
-    # SELL CONDITION (Crash)
-    elif (m5_ema50 < m5_ema200) and (latest_rsi >= 70) and \
-         (near_ema(latest_price, m1_ema50_val) or near_ema(latest_price, m1_ema200_val)):
-        
-        sl, tp = get_sl_tp(latest_price, "SELL")
-        send_telegram(f"🔻 {SYMBOLS[symbol]} SELL\nEntry: {latest_price:.2f}\nSL: {sl:.2f}\nTP: {tp:.2f}")
-        active_trade[symbol] = {"direction": "SELL", "tp": tp, "sl": sl, "pair": SYMBOLS[symbol]}
-        last_signal_time[symbol] = now
-
-# =====================================
-# WEBSOCKET HANDLERS
-# =====================================
-def on_message(ws, message):
-    data = json.loads(message)
+    current_time = time.time()
     
-    # Process History Data
-    if "history" in data:
-        symbol = data["echo_req"]["ticks_history"]
-        prices = [float(p) for p in data["history"]["prices"]]
-        tick_data[symbol] = prices
-        print(f"✅ Pre-loaded {len(prices)} ticks for {symbol}")
+    # --- CRASH LOGIC (SELLS) ---
+    if m5_ema50 < m5_ema200: # Bearish Trend
+        # PRE-ALERT: RSI climbing and near EMA
+        if 60 <= latest_rsi < 70 and near_ema(latest_price, m1_ema50, 80):
+            if current_time - last_pre_alert_time[symbol] > 300: # Only alert once every 5 mins
+                send_telegram(f"⚠️ *PRE-SIGNAL: {symbol}*\nPrice is approaching the Sell Zone! RSI is {latest_rsi:.2f}. Watch for a crash soon.")
+                last_pre_alert_time[symbol] = current_time
 
-    # Process Live Ticks
-    if "tick" in data:
-        symbol = data["tick"]["symbol"]
-        price = data["tick"]["quote"]
-        if symbol in tick_data:
-            tick_data[symbol].append(price)
-            if len(tick_data[symbol]) > 5000:
-                tick_data[symbol] = tick_data[symbol][-5000:]
-            
-            # Check existing trades for TP/SL
-            if symbol in active_trade:
-                t = active_trade[symbol]
-                if (t["direction"] == "BUY" and (price >= t["tp"] or price <= t["sl"])) or \
-                   (t["direction"] == "SELL" and (price <= t["tp"] or price >= t["sl"])):
-                    res = "PROFIT ✅" if (t["direction"]=="BUY" and price >= t["tp"]) or (t["direction"]=="SELL" and price <= t["tp"]) else "LOSS ❌"
-                    send_telegram(f"Trade Closed: {t['pair']} - {res}")
-                    del active_trade[symbol]
+        # FINAL SIGNAL
+        if latest_rsi >= 70 and near_ema(latest_price, m1_ema50, 50):
+            msg = (f"🔻 *CRASH 1000 SELL SIGNAL*\n"
+                   f"Entry: {latest_price}\n"
+                   f"RSI: {latest_rsi:.2f}\n"
+                   f"Trend: Bearish ✅")
+            send_telegram(msg)
+            print(f"!!! SIGNAL SENT FOR {symbol} !!!")
 
-            analyze(symbol)
+    # --- BOOM LOGIC (BUYS) ---
+    elif m5_ema50 > m5_ema200: # Bullish Trend
+        # PRE-ALERT: RSI dropping and near EMA
+        if 30 < latest_rsi <= 40 and near_ema(latest_price, m1_ema50, 80):
+            if current_time - last_pre_alert_time[symbol] > 300:
+                send_telegram(f"⚠️ *PRE-SIGNAL: {symbol}*\nPrice is approaching the Buy Zone! RSI is {latest_rsi:.2f}. Watch for a spike soon.")
+                last_pre_alert_time[symbol] = current_time
 
-def on_open(ws):
-    send_telegram(f"✅ {BOT_NAME} Connected. Fetching history...")
-    for symbol in SYMBOLS.keys():
-        ws.send(json.dumps({
-            "ticks_history": symbol,
-            "count": 3000,
-            "end": "latest",
-            "style": "ticks",
-            "subscribe": 1
-        }))
+        # FINAL SIGNAL
+        if latest_rsi <= 30 and near_ema(latest_price, m1_ema50, 50):
+            msg = (f"🚀 *BOOM 1000 BUY SIGNAL*\n"
+                   f"Entry: {latest_price}\n"
+                   f"RSI: {latest_rsi:.2f}\n"
+                   f"Trend: Bullish ✅")
+            send_telegram(msg)
+            print(f"!!! SIGNAL SENT FOR {symbol} !!!")
 
-def run():
-    ws = websocket.WebSocketApp(
-        f"wss://ws.derivws.com/websockets/v3?app_id={DERIV_APP_ID}",
-        on_open=on_open,
-        on_message=on_message
-    )
-    ws.run_forever()
-
-if __name__ == "__main__":
-    while True:
-        try:
-            run()
-        except:
-            time.sleep(5)
+# --- PLACEHOLDER FOR YOUR BROKER CONNECTION ---
+# This part depends on if you use Deriv API or a library like MetaTrader5
+# You must feed 'candles[symbol]['m1']' and 'm5' with closing prices.
