@@ -1,27 +1,28 @@
-import requests
+import time, requests
 
-# Test credentials
-TOKEN = "8667543667:AAFFdhIPIjJGAVcbQ3be8wYgQQNvy_5mB9s"
-CHAT_ID = "6856488919"
+# PASTE YOUR NEW TOKEN HERE
+TOKEN = "8830024269: AAHe15l_My8tw3D2Vf7gH0yz7VEkgqbYwK8"
+ID = "6856488919"
 
-def run_test():
-    print("--- STARTING ONE-TIME CONNECTION TEST ---")
-    url = f"https://api.telegram.org/bot{TOKEN}/getMe"
-    
+# Markets you are trading
+MARKETS = ["Crash 1000", "Boom 1000", "Crash 900", "Crash 500", "Boom 500"]
+
+def send_msg(text):
     try:
-        # Test 1: Check if the token is even valid
-        r1 = requests.get(url)
-        print(f"Test 1 (Token Check) Status: {r1.status_code}")
-        print(f"Response: {r1.text}")
-        
-        # Test 2: Try to send a message
-        msg_url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-        payload = {"chat_id": CHAT_ID, "text": "🚨 TEST CODE WORKING!"}
-        r2 = requests.post(msg_url, json=payload)
-        print(f"Test 2 (Message Send) Status: {r2.status_code}")
-        
-    except Exception as e:
-        print(f"Connection Error: {e}")
+        # Simplified URL for iPhone compatibility
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage?chat_id={ID}&text={text}"
+        r = requests.get(url)
+        print(f"Telegram Status: {r.status_code}")
+    except:
+        print("Connection Error")
 
 if __name__ == "__main__":
-    run_test()
+    print("--- 🚀 NEW BOT STARTING 🚀 ---")
+    
+    # Check if the new bot can talk to you
+    send_msg("💎 NEW BOT IS LIVE AND SCANNING!")
+
+    while True:
+        for m in MARKETS:
+            print(f"Scanning {m}...")
+        time.sleep(60)
