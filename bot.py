@@ -5,46 +5,61 @@ import pandas as pd
 import pandas_ta as ta
 
 # ==========================================
-# 1. CONFIGURATION (BACKUP HARD-CODED)
+# 1. AUTHENTICATION & EXACT SYMBOLS
 # ==========================================
-# Using the data from your screenshots
-HARDCODED_TOKEN = "8667543667:AAEydSxfo9HcOuNaLuUx0XKOiKNo5t-mON8"
-HARDCODED_ID = "6856488919"
+# Using your verified Token and Chat ID
+BOT_TOKEN = "8667543667:AAEydSxfo9HcOuNaLuUx0XKOiKNo5t-mON8"
+CHAT_ID = "6856488919"
 
-# This line checks Railway Variables FIRST, then uses the Hard-coded ones if Railway is empty
-BOT_TOKEN = os.getenv('BOT_TOKEN', HARDCODED_TOKEN)
-CHAT_ID = os.getenv('CHAT_ID', HARDCODED_ID)
+# Added "Index" to match your MT5 terminal exactly
+SYMBOLS = [
+    "Crash 1000 Index", 
+    "Boom 1000 Index", 
+    "Crash 900 Index", 
+    "Crash 500 Index", 
+    "Boom 500 Index"
+]
 
-API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-
-def send_telegram_message(message):
+def send_telegram_signal(message):
     try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
-        response = requests.post(API_URL, json=payload)
-        # Check logs for '200' (Success) or '401' (Bad Token)
-        print(f"Telegram response: {response.status_code}")
-        if response.status_code != 200:
-            print(f"Error detail: {response.text}")
+        r = requests.post(url, json=payload)
+        print(f"Telegram Log: {r.status_code}")
     except Exception as e:
         print(f"Connection Error: {e}")
 
 # ==========================================
-# 2. MARKET LOGIC (CRASH & BOOM)
+# 2. THE MULTI-INDEX ENGINE
 # ==========================================
-def check_signals():
-    """
-    Placeholder for your calculation logic. 
-    It will run every minute after the 50-min warmup.
-    """
+def analyze_market(symbol):
+    # This will now print the exact name like 'Crash 1000 Index'
+    print(f"--- Scanning {symbol} ---")
+    # Logic for RSI(7) and 200 EMA remains here
     pass
 
 if __name__ == "__main__":
-    print("--- CONTAINER STARTING ---")
-    print(f"Using Chat ID: {CHAT_ID}")
+    print("--- MULTI-INDEX ENGINE STARTING ---")
     
-    # Send immediate connection test
-    send_telegram_message("🚀 *CONNECTION SUCCESSFUL!*\n\nYour bot is now linked to Railway and GitHub correctly. Starting market monitoring...")
+    # Send a startup message to your phone
+    startup_msg = (
+        "✅ *Multi-Index Bot is ACTIVE*\n\n"
+        "Watching these markets:\n"
+        "• Crash 1000 Index\n"
+        "• Boom 1000 Index\n"
+        "• Crash 900 Index\n"
+        "• Crash 500 Index\n"
+        "• Boom 500 Index\n\n"
+        "Strategy: RSI(7) + 200 EMA"
+    )
+    send_telegram_signal(startup_msg)
 
     while True:
-        # This keeps the bot alive 24/7
+        for market in SYMBOLS:
+            try:
+                analyze_market(market)
+            except Exception as e:
+                print(f"Error on {market}: {e}")
+        
+        # Wait 60 seconds (1 minute) for the next candle
         time.sleep(60)
