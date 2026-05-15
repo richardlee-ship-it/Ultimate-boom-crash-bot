@@ -299,7 +299,7 @@ def analyze(symbol):
 
         bullish_trend and
 
-        latest_rsi <= 25 and
+        latest_rsi <= 20 and
 
         (
             near_ema(
@@ -360,7 +360,7 @@ TP: {tp:.2f}
 
         bearish_trend and
 
-        latest_rsi >= 75 and
+        latest_rsi >= 80 and
 
         (
             near_ema(
