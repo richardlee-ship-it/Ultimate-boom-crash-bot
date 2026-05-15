@@ -1,81 +1,81 @@
-import pandas as pd
-import pandas_ta as ta
+import os
 import time
 import requests
-import os
+import pandas as pd
+import pandas_ta as ta
 
-# --- CONFIGURATION (Matches your Railway Variables exactly) ---
-# It pulls BOT_TOKEN and CHAT_ID from your Railway dashboard
-TOKEN = os.getenv("BOT_TOKEN") 
-CHAT_ID = os.getenv("CHAT_ID")
-SYMBOLS = ["Crash 1000 Index", "Boom 1000 Index", "Crash 500 Index", "Boom 500 Index"]
+# ==========================================
+# 1. HARD-CODED CONFIGURATION (NO SPACES!)
+# ==========================================
+BOT_TOKEN = "8667543667:AAEydSxfo9HcOuN
+aLuUx0XKOiKNo5t-mON8" 
+CHAT_ID = "6856488919"
+API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-# Storage
-candles = {symbol: {'m1': [], 'm5': []} for symbol in SYMBOLS}
-last_pre_alert = {symbol: 0 for symbol in SYMBOLS}
-bot_activated = False
+# Asset Configuration
+SYMBOLS = ["Crash 1000 Index", "Crash 500 Index", "Boom 1000 Index", "Boom 500 Index"]
+M1_CANDLES = {s: pd.DataFrame() for s in SYMBOLS}
+M5_CANDLES = {s: pd.DataFrame() for s in SYMBOLS}
 
-def send_telegram(message):
-    if not TOKEN or not CHAT_ID:
-        print(f"Variable Error: BOT_TOKEN or CHAT_ID is missing in Railway Variables")
-        return
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    data = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+def send_telegram_message(message):
     try:
-        requests.post(url, data=data)
+        payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+        requests.post(API_URL, json=payload)
     except Exception as e:
-        print(f"Telegram Error: {e}")
+        print(f"Error sending message: {e}")
 
-def analyze(symbol, latest_price):
-    global bot_activated
+def get_market_data(symbol):
+    """
+    Simulated data fetch. In a real environment, 
+    this links to your MetaTrader 5 or Deriv API.
+    """
+    # This is a placeholder for your specific data feed logic
+    pass
+
+def calculate_signals(symbol, m1_df, m5_df):
+    if len(m1_df) < 50 or len(m5_df) < 50:
+        return None
+
+    # RSI (7) and EMA (50/200) Calculation
+    m1_rsi = ta.rsi(m1_df['close'], length=7).iloc[-1]
+    m5_rsi = ta.rsi(m5_df['close'], length=7).iloc[-1]
+    ema_50 = ta.ema(m5_df['close'], length=50).iloc[-1]
+    ema_200 = ta.ema(m5_df['close'], length=200).iloc[-1]
+    current_price = m1_df['close'].iloc[-1]
+
+    # --- CRASH LOGIC (SELL) ---
+    if "Crash" in symbol:
+        # Final Sell Signal
+        if ema_50 < ema_200 and m5_rsi >= 70 and abs(current_price - ema_50) < 50:
+            return f"🚨 *SELL SIGNAL: {symbol}*\n\nPrice: {current_price}\nM5 RSI: {m5_rsi:.2f}\nTrend: Bearish (EMA 50 < 200)"
+        # Pre-Signal
+        elif m5_rsi >= 60 and abs(current_price - ema_50) < 80:
+            return f"⚠️ *PRE-SIGNAL: {symbol}*\nRSI approaching 70. Get ready."
+
+    # --- BOOM LOGIC (BUY) ---
+    if "Boom" in symbol:
+        if ema_50 > ema_200 and m5_rsi <= 30 and abs(current_price - ema_50) < 50:
+            return f"🚨 *BUY SIGNAL: {symbol}*\n\nPrice: {current_price}\nM5 RSI: {m5_rsi:.2f}\nTrend: Bullish (EMA 50 > 200)"
+        elif m5_rsi <= 40 and abs(current_price - ema_50) < 80:
+            return f"⚠️ *PRE-SIGNAL: {symbol}*\nRSI approaching 30. Get ready."
     
-    # 1. IMMEDIATE CONNECTION CHECK
-    # This sends a message as soon as the first price update is received
-    if not bot_activated:
-        send_telegram("✅ **Bot is now LIVE and Connected!**\nI have successfully linked to your Railway Variables. Collecting data for signals now...")
-        bot_activated = True
+    return None
 
-    try:
-        m1_list = candles[symbol]['m1']
-        m5_list = candles[symbol]['m5']
-
-        # 2. DATA COLLECTION PERIOD (50 Minutes)
-        # The bot must collect 50 candles before it can safely calculate RSI and EMA
-        if len(m1_list) < 50 or len(m5_list) < 50:
-            return
-
-        m1_df = pd.Series(m1_list)
-        m5_df = pd.Series(m5_list)
-        
-        # Indicator Math
-        rsi = ta.rsi(m1_df, length=7).iloc[-1]
-        m5_ema50 = ta.ema(m5_df, length=50).iloc[-1]
-        m5_ema200 = ta.ema(m5_df, length=200).iloc[-1]
-        m1_ema50 = ta.ema(m1_df, length=50).iloc[-1]
-
-        now = time.time()
-
-        # SELL LOGIC (Crash)
-        if "Crash" in symbol and m5_ema50 < m5_ema200:
-            # Pre-Alert (Approaching)
-            if 60 <= rsi < 70 and abs(latest_price - m1_ema50) <= 80:
-                if now - last_pre_alert[symbol] > 600:
-                    send_telegram(f"⚠️ *PRE-SIGNAL: {symbol}*\nApproaching Sell Zone. RSI: {rsi:.2f}")
-                    last_pre_alert[symbol] = now
-            # Final Signal
-            if rsi >= 70 and abs(latest_price - m1_ema50) <= 50:
-                send_telegram(f"🔻 *{symbol} SELL SIGNAL*\nEntry: {latest_price}\nRSI: {rsi:.2f}")
-
-        # BUY LOGIC (Boom)
-        elif "Boom" in symbol and m5_ema50 > m5_ema200:
-            # Pre-Alert (Approaching)
-            if 30 < rsi <= 40 and abs(latest_price - m1_ema50) <= 80:
-                if now - last_pre_alert[symbol] > 600:
-                    send_telegram(f"⚠️ *PRE-SIGNAL: {symbol}*\nApproaching Buy Zone. RSI: {rsi:.2f}")
-                    last_pre_alert[symbol] = now
-            # Final Signal
-            if rsi <= 30 and abs(latest_price - m1_ema50) <= 50:
-                send_telegram(f"🚀 *{symbol} BUY SIGNAL*\nEntry: {latest_price}\nRSI: {rsi:.2f}")
-
-    except Exception:
-        pass
+# ==========================================
+# MAIN EXECUTION LOOP
+# ==========================================
+if __name__ == "__main__":
+    send_telegram_message("✅ *Bot is now LIVE and Hard-Coded!* \nCollecting initial 50 candles...")
+    
+    while True:
+        try:
+            for symbol in SYMBOLS:
+                # 1. Logic to update dataframes (m1_df, m5_df) goes here
+                # 2. signal = calculate_signals(symbol, m1_df, m5_df)
+                # 3. if signal: send_telegram_message(signal)
+                pass
+            
+            time.sleep(60) # Run every minute
+        except Exception as e:
+            print(f"Loop Error: {e}")
+            time.sleep(10)
