@@ -33,7 +33,7 @@ tick_data = {s: [] for s in SYMBOLS}
 tick_times = {s: [] for s in SYMBOLS}
 last_signal_time = {}
 active_trade = {}
-COOLDOWN = 300  # Reduced to 5 minutes to accommodate rapid M1 setups
+COOLDOWN = 300  # 5 minutes to accommodate rapid M1 setups
 
 # =====================================
 # TELEGRAM SYSTEM
@@ -62,13 +62,12 @@ def rsi(series, period=7):
     loss = -delta.clip(upper=0)
     avg_gain = gain.rolling(period).mean()
     avg_loss = loss.rolling(period).mean()
-    # Avoid zero division errors
-    avg_loss = avg_loss.replace(0, 0.00001)
+    avg_loss = avg_loss.replace(0, 0.00001)  # Avoid division by zero
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
 # =====================================
-# FIXED CANDLE RESAMPLER
+# CANDLE RESAMPLER
 # =====================================
 def build_candles(symbol, tf="1min"):
     prices = tick_data[symbol]
@@ -77,12 +76,11 @@ def build_candles(symbol, tf="1min"):
     df = pd.DataFrame({"price": prices, "time": pd.to_datetime(times, unit='s')})
     df = df.set_index("time")
     
-    # Resample using actual time windows
     ohlc = df["price"].resample(tf).ohlc()
     return ohlc.ffill().dropna()
 
 # =====================================
-# EMA TOUCH (Adjusted margin for asset scaling)
+# EMA TOUCH
 # =====================================
 def near_ema(price, ema_value, threshold=2.5):
     return abs(price - ema_value) <= threshold
@@ -91,8 +89,8 @@ def near_ema(price, ema_value, threshold=2.5):
 # TAILORED RISK MANAGEMENT (1:3 Risk/Reward)
 # =====================================
 def get_sl_tp(entry, direction):
-    risk = 20   # Equivalent to approximately 20 M1 candles
-    reward = 60 # Strict 1:3 Risk to Reward execution
+    risk = 20   # 20 points
+    reward = 60 # Strict 1:3 target
 
     if direction == "BUY":
         sl = entry - risk
@@ -157,7 +155,7 @@ def analyze(symbol):
     m1_ema50 = ema(close, 50).iloc[-1]
     m1_ema200 = ema(close, 200).iloc[-1]
     
-    # RSI parameters to your required 80/20 criteria
+    # RSI parameters (80/20 setup)
     latest_rsi = rsi(close, 7).iloc[-1]
 
     pair_name = SYMBOLS[symbol]
@@ -218,7 +216,6 @@ def on_open(ws):
     send_telegram(f"{BOT_NAME}\n\n✅ Live Setup Active on Railway Server")
 
     for symbol in SYMBOLS.keys():
-        # Requests past history ticks to prevent startup delays
         ws.send(json.dumps({
             "ticks_history": symbol,
             "adjust_start_time": 1,
@@ -229,7 +226,7 @@ def on_open(ws):
         ws.send(json.dumps({"ticks": symbol, "subscribe": 1}))
 
 # =====================================
-# RUN & LOOP (FIXED WITH PRODUCTION URL & DUMMY PORT)
+# RUN & LOOP (FIXED HOSTNAME ROUTING)
 # =====================================
 def start_dummy_server():
     """Keeps Railway alive by listening to the assigned system port."""
@@ -246,24 +243,22 @@ def start_dummy_server():
     port = int(os.getenv("PORT", 8080))
     
     def server_thread():
-        # Fixes port re-use lock issues on rapid server crashes
         socketserver.TCPServer.allow_reuse_address = True
-        with socketserver.TCPServer(("", port), DummyHandler) as httpd:
+        # Bind specifically to 0.0.0.0 to fix Docker/Railway routing issues
+        with socketserver.TCPServer(("0.0.0.0", port), DummyHandler) as httpd:
             print(f"🌍 Dummy server ticking on port {port}")
             httpd.serve_forever()
             
     threading.Thread(target=server_thread, daemon=True).start()
 
 def run():
-    # FIX: Swapped out broken domain for the official unblocked Deriv production endpoint
-    url = f"wss://://derivws.com{DERIV_APP_ID}"
+    # FIXED: Switched to the absolute core endpoint URL to bypass network blocking layers
+    url = f"wss://://binaryws.com{DERIV_APP_ID}"
     ws = websocket.WebSocketApp(url, on_open=on_open, on_message=on_message)
     ws.run_forever()
 
 if __name__ == "__main__":
     print("🚀 Initializing Bot Main Loop...")
-    
-    # Fire up the dummy server so Railway doesn't shut the container down
     start_dummy_server()
     
     while True:
