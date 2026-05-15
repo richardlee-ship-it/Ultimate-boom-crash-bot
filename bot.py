@@ -4,7 +4,6 @@ import time
 import requests
 import websocket
 import pandas as pd
-import numpy as np
 
 # =========================================
 # BOT CONFIG
@@ -18,7 +17,7 @@ CHAT_ID = os.getenv("CHAT_ID")
 DERIV_APP_ID = "1089"
 
 # =========================================
-# REAL BOOM / CRASH SYMBOLS
+# SYMBOLS
 # =========================================
 
 SYMBOLS = {
@@ -39,7 +38,7 @@ last_signal_time = {}
 
 active_trade = {}
 
-COOLDOWN = 900  # 15 mins
+COOLDOWN = 900
 
 # =========================================
 # TELEGRAM
@@ -49,26 +48,36 @@ def send_telegram(message):
 
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
 
-    requests.post(url, data={
-        "chat_id": CHAT_ID,
-        "text": message
-    })
+    try:
+        requests.post(url, data={
+            "chat_id": CHAT_ID,
+            "text": message
+        })
+
+    except:
+        pass
 
 # =========================================
 # INDICATORS
 # =========================================
 
 def ema(series, period):
-    return series.ewm(span=period, adjust=False).mean()
+
+    return series.ewm(
+        span=period,
+        adjust=False
+    ).mean()
 
 def rsi(series, period=7):
 
     delta = series.diff()
 
     gain = delta.clip(lower=0)
+
     loss = -delta.clip(upper=0)
 
     avg_gain = gain.rolling(period).mean()
+
     avg_loss = loss.rolling(period).mean()
 
     rs = avg_gain / avg_loss
@@ -79,7 +88,7 @@ def rsi(series, period=7):
 # BUILD CANDLES
 # =========================================
 
-def build_candles(prices, timeframe="1min"):
+def build_candles(prices, tf="1min"):
 
     df = pd.DataFrame(prices, columns=["price"])
 
@@ -91,12 +100,12 @@ def build_candles(prices, timeframe="1min"):
 
     df = df.set_index("time")
 
-    ohlc = df["price"].resample(timeframe).ohlc()
+    ohlc = df["price"].resample(tf).ohlc()
 
     return ohlc.dropna()
 
 # =========================================
-# REJECTION CANDLE
+# REJECTION CANDLES
 # =========================================
 
 def bullish_rejection(df):
@@ -105,9 +114,11 @@ def bullish_rejection(df):
 
     body = abs(c["close"] - c["open"])
 
-    lower_wick = min(c["open"], c["close"]) - c["low"]
+    lower_wick = (
+        min(c["open"], c["close"]) - c["low"]
+    )
 
-    return lower_wick > body * 2
+    return lower_wick > body
 
 def bearish_rejection(df):
 
@@ -115,26 +126,27 @@ def bearish_rejection(df):
 
     body = abs(c["close"] - c["open"])
 
-    upper_wick = c["high"] - max(c["open"], c["close"])
+    upper_wick = (
+        c["high"] - max(c["open"], c["close"])
+    )
 
-    return upper_wick > body * 2
+    return upper_wick > body
 
 # =========================================
-# EMA ZONE
+# EMA TOUCH
 # =========================================
 
-def near_ema(price, ema_value, threshold=8):
+def near_ema(price, ema_value, threshold=15):
 
     return abs(price - ema_value) <= threshold
 
 # =========================================
-# SL TP
+# SL / TP
 # =========================================
 
 def get_sl_tp(entry, direction):
 
     risk = 20
-
     reward = 40
 
     if direction == "BUY":
@@ -153,12 +165,14 @@ def get_sl_tp(entry, direction):
 # TRADE TRACKER
 # =========================================
 
-def check_trade_result(symbol, current_price):
+def check_trade_result(symbol, price):
 
     if symbol not in active_trade:
         return
 
     trade = active_trade[symbol]
+
+    pair = trade["pair"]
 
     direction = trade["direction"]
 
@@ -166,11 +180,11 @@ def check_trade_result(symbol, current_price):
 
     sl = trade["sl"]
 
-    pair = trade["pair"]
+    # BUY
 
     if direction == "BUY":
 
-        if current_price >= tp:
+        if price >= tp:
 
             send_telegram(
 f"""
@@ -178,13 +192,13 @@ f"""
 
 {pair}
 
-BUY trade closed in profit ✅
+BUY closed in profit ✅
 """
             )
 
             del active_trade[symbol]
 
-        elif current_price <= sl:
+        elif price <= sl:
 
             send_telegram(
 f"""
@@ -192,15 +206,17 @@ f"""
 
 {pair}
 
-BUY trade stopped out
+BUY stopped out
 """
             )
 
             del active_trade[symbol]
+
+    # SELL
 
     else:
 
-        if current_price <= tp:
+        if price <= tp:
 
             send_telegram(
 f"""
@@ -208,13 +224,13 @@ f"""
 
 {pair}
 
-SELL trade closed in profit ✅
+SELL closed in profit ✅
 """
             )
 
             del active_trade[symbol]
 
-        elif current_price >= sl:
+        elif price >= sl:
 
             send_telegram(
 f"""
@@ -222,7 +238,7 @@ f"""
 
 {pair}
 
-SELL trade stopped out
+SELL stopped out
 """
             )
 
@@ -236,46 +252,52 @@ def analyze(symbol):
 
     prices = tick_data[symbol]
 
-    if len(prices) < 2000:
+    # =====================================
+    # LOWERED HISTORY REQUIREMENT
+    # =====================================
+
+    if len(prices) < 500:
         return
 
-    # =========================
-    # M1 ENTRY TF
-    # =========================
+    # =====================================
+    # BUILD CANDLES
+    # =====================================
 
     m1 = build_candles(prices, "1min")
 
-    # =========================
-    # M5 TREND TF
-    # =========================
-
     m5 = build_candles(prices, "5min")
 
-    if len(m5) < 220:
+    if len(m1) < 50 or len(m5) < 50:
         return
 
-    # =========================
+    # =====================================
     # M5 TREND
-    # =========================
+    # =====================================
 
     m5_close = m5["close"]
 
     m5_ema50 = ema(m5_close, 50)
+
     m5_ema200 = ema(m5_close, 200)
 
-    bullish_trend = m5_ema50.iloc[-1] > m5_ema200.iloc[-1]
+    bullish_trend = (
+        m5_ema50.iloc[-1] > m5_ema200.iloc[-1]
+    )
 
-    bearish_trend = m5_ema50.iloc[-1] < m5_ema200.iloc[-1]
+    bearish_trend = (
+        m5_ema50.iloc[-1] < m5_ema200.iloc[-1]
+    )
 
-    # =========================
+    # =====================================
     # M1 ENTRY
-    # =========================
+    # =====================================
 
     close = m1["close"]
 
     latest_price = close.iloc[-1]
 
     m1_ema50 = ema(close, 50)
+
     m1_ema200 = ema(close, 200)
 
     latest_rsi = rsi(close, 7).iloc[-1]
@@ -286,34 +308,54 @@ def analyze(symbol):
 
     last = last_signal_time.get(symbol, 0)
 
+    # =====================================
+    # COOLDOWN
+    # =====================================
+
     if now - last < COOLDOWN:
         return
 
-    # =========================
-    # NO MULTIPLE TRADES
-    # =========================
+    # =====================================
+    # ONE TRADE PER PAIR
+    # =====================================
 
     if symbol in active_trade:
         return
 
-    # =================================
+    # =====================================
     # BUY LOGIC
-    # =================================
+    # =====================================
 
     if (
 
         bullish_trend and
-        latest_rsi <= 20 and
+
+        latest_rsi <= 25 and
+
         (
-            near_ema(latest_price, m1_ema50.iloc[-1])
+            near_ema(
+                latest_price,
+                m1_ema50.iloc[-1]
+            )
+
             or
-            near_ema(latest_price, m1_ema200.iloc[-1])
-        ) and
+
+            near_ema(
+                latest_price,
+                m1_ema200.iloc[-1]
+            )
+        )
+
+        and
+
         bullish_rejection(m1)
 
     ):
 
-        sl, tp = get_sl_tp(latest_price, "BUY")
+        sl, tp = get_sl_tp(
+            latest_price,
+            "BUY"
+        )
 
         send_telegram(
 f"""
@@ -324,11 +366,10 @@ f"""
 PAIR: {pair_name}
 
 M5 Trend: Bullish ✅
-M1 Entry Confirmed ✅
 
 RSI(7): {latest_rsi:.2f}
 
-Price reacted from EMA zone
+EMA Pullback Confirmed
 
 ENTRY: {latest_price:.2f}
 SL: {sl:.2f}
@@ -346,24 +387,40 @@ TP: {tp:.2f}
 
         last_signal_time[symbol] = now
 
-    # =================================
+    # =====================================
     # SELL LOGIC
-    # =================================
+    # =====================================
 
     if (
 
         bearish_trend and
-        latest_rsi >= 80 and
+
+        latest_rsi >= 75 and
+
         (
-            near_ema(latest_price, m1_ema50.iloc[-1])
+            near_ema(
+                latest_price,
+                m1_ema50.iloc[-1]
+            )
+
             or
-            near_ema(latest_price, m1_ema200.iloc[-1])
-        ) and
+
+            near_ema(
+                latest_price,
+                m1_ema200.iloc[-1]
+            )
+        )
+
+        and
+
         bearish_rejection(m1)
 
     ):
 
-        sl, tp = get_sl_tp(latest_price, "SELL")
+        sl, tp = get_sl_tp(
+            latest_price,
+            "SELL"
+        )
 
         send_telegram(
 f"""
@@ -374,11 +431,10 @@ f"""
 PAIR: {pair_name}
 
 M5 Trend: Bearish ✅
-M1 Entry Confirmed ✅
 
 RSI(7): {latest_rsi:.2f}
 
-Price reacted from EMA zone
+EMA Pullback Confirmed
 
 ENTRY: {latest_price:.2f}
 SL: {sl:.2f}
@@ -415,8 +471,13 @@ def on_message(ws, message):
 
         tick_data[symbol].append(price)
 
-        if len(tick_data[symbol]) > 5000:
-            tick_data[symbol] = tick_data[symbol][-5000:]
+        # LIMIT MEMORY
+
+        if len(tick_data[symbol]) > 3000:
+
+            tick_data[symbol] = (
+                tick_data[symbol][-3000:]
+            )
 
         check_trade_result(symbol, price)
 
@@ -446,13 +507,14 @@ f"""
         }))
 
 # =========================================
-# RUN BOT
+# RUN
 # =========================================
 
 def run():
 
     url = (
-        f"wss://ws.derivws.com/websockets/v3?app_id={DERIV_APP_ID}"
+        f"wss://ws.derivws.com/"
+        f"websockets/v3?app_id={DERIV_APP_ID}"
     )
 
     ws = websocket.WebSocketApp(
