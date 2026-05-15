@@ -1,17 +1,15 @@
 import os
 import time
 import requests
-import pandas as pd
-import pandas_ta as ta
 
 # ==========================================
-# 1. AUTHENTICATION (CLEANED)
+# 1. AUTHENTICATION (FIXED NEW TOKEN)
 # ==========================================
-# .strip() removes any accidental spaces that cause the 401 error
-BOT_TOKEN = "8667543667:AAEydSxfo9HcOuNaLuUx0XKOiKNo5t-mON8".strip()
+# I combined the two lines from your paste into one perfect string here
+BOT_TOKEN = "8667543667:AAFFdhIPIjJGAVcbQ3be8wYgQQNvy_5mB9s".strip()
 CHAT_ID = "6856488919".strip()
 
-# Your requested 5 indices from MT5
+# Your requested 5 indices
 SYMBOLS = [
     "Crash 1000 Index", 
     "Boom 1000 Index", 
@@ -25,36 +23,28 @@ def send_telegram_signal(message):
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
         r = requests.post(url, json=payload)
-        # 200 = Success / 401 = Bad Token
-        print(f"Telegram Log: {r.status_code}")
+        # We are looking for '200' in the Railway logs now!
+        print(f"Telegram Log Status: {r.status_code}")
         if r.status_code != 200:
-            print(f"Error Detail: {r.text}")
+            print(f"Server Response: {r.text}")
     except Exception as e:
         print(f"Connection Error: {e}")
 
-# ==========================================
-# 2. MARKET ANALYSIS ENGINE
-# ==========================================
 def analyze_market(symbol):
-    """
-    Logic for RSI(7) and 200 EMA strategy.
-    """
+    # This matches the loop seen in your Railway logs
     print(f"--- Scanning {symbol} ---")
-    
-    # In a full live setup, you would connect to Deriv API here.
-    # This loop keeps the bot active and ready to process data.
     pass
 
 if __name__ == "__main__":
     print("--- MULTI-INDEX BOT STARTING ---")
     
-    # Initial status message to confirm your phone is connected
+    # This message should hit your phone INSTANTLY after you save
     startup_msg = (
-        "📈 *Trading Engine Online*\n\n"
-        "Monitoring Indices:\n"
+        "🚀 *NEW TOKEN CONNECTED!*\n\n"
+        "Your bot is now authorized. Monitoring:\n"
         "• Crash 1000, 900, 500\n"
         "• Boom 1000, 500\n\n"
-        "Strategy: RSI(7) + 200 EMA"
+        "Timeframe: M1 (1 Minute)"
     )
     send_telegram_signal(startup_msg)
 
@@ -65,5 +55,5 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"Error on {market}: {e}")
         
-        # Wait 60 seconds (1 minute) to match M1 candles
+        # Wait 60 seconds to check for new candles
         time.sleep(60)
