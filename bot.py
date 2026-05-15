@@ -5,6 +5,7 @@ import requests
 import os
 
 # --- CONFIGURATION (Matches your Railway Variables exactly) ---
+# It pulls BOT_TOKEN and CHAT_ID from your Railway dashboard
 TOKEN = os.getenv("BOT_TOKEN") 
 CHAT_ID = os.getenv("CHAT_ID")
 SYMBOLS = ["Crash 1000 Index", "Boom 1000 Index", "Crash 500 Index", "Boom 500 Index"]
@@ -16,7 +17,7 @@ bot_activated = False
 
 def send_telegram(message):
     if not TOKEN or not CHAT_ID:
-        print(f"Variable Error: BOT_TOKEN is {TOKEN}, CHAT_ID is {CHAT_ID}")
+        print(f"Variable Error: BOT_TOKEN or CHAT_ID is missing in Railway Variables")
         return
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     data = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
@@ -28,16 +29,18 @@ def send_telegram(message):
 def analyze(symbol, latest_price):
     global bot_activated
     
-    # Sends a message the VERY SECOND the bot starts receiving data
+    # 1. IMMEDIATE CONNECTION CHECK
+    # This sends a message as soon as the first price update is received
     if not bot_activated:
-        send_telegram("✅ **Bot is now LIVE!**\nRailway variables connected successfully. Collecting first 50 minutes of data now.")
+        send_telegram("✅ **Bot is now LIVE and Connected!**\nI have successfully linked to your Railway Variables. Collecting data for signals now...")
         bot_activated = True
 
     try:
         m1_list = candles[symbol]['m1']
         m5_list = candles[symbol]['m5']
 
-        # Silence for 50 minutes to ensure math is accurate
+        # 2. DATA COLLECTION PERIOD (50 Minutes)
+        # The bot must collect 50 candles before it can safely calculate RSI and EMA
         if len(m1_list) < 50 or len(m5_list) < 50:
             return
 
@@ -54,19 +57,23 @@ def analyze(symbol, latest_price):
 
         # SELL LOGIC (Crash)
         if "Crash" in symbol and m5_ema50 < m5_ema200:
+            # Pre-Alert (Approaching)
             if 60 <= rsi < 70 and abs(latest_price - m1_ema50) <= 80:
                 if now - last_pre_alert[symbol] > 600:
                     send_telegram(f"⚠️ *PRE-SIGNAL: {symbol}*\nApproaching Sell Zone. RSI: {rsi:.2f}")
                     last_pre_alert[symbol] = now
+            # Final Signal
             if rsi >= 70 and abs(latest_price - m1_ema50) <= 50:
                 send_telegram(f"🔻 *{symbol} SELL SIGNAL*\nEntry: {latest_price}\nRSI: {rsi:.2f}")
 
         # BUY LOGIC (Boom)
         elif "Boom" in symbol and m5_ema50 > m5_ema200:
+            # Pre-Alert (Approaching)
             if 30 < rsi <= 40 and abs(latest_price - m1_ema50) <= 80:
                 if now - last_pre_alert[symbol] > 600:
                     send_telegram(f"⚠️ *PRE-SIGNAL: {symbol}*\nApproaching Buy Zone. RSI: {rsi:.2f}")
                     last_pre_alert[symbol] = now
+            # Final Signal
             if rsi <= 30 and abs(latest_price - m1_ema50) <= 50:
                 send_telegram(f"🚀 *{symbol} BUY SIGNAL*\nEntry: {latest_price}\nRSI: {rsi:.2f}")
 
