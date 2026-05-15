@@ -1,5 +1,4 @@
 websocket-client
 pandas
-pandas-ta
 numpy
 requests
